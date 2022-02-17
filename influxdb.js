@@ -360,20 +360,22 @@ module.exports = function (RED) {
                         statusCode: err.res ? err.res.statusCode : 503
                     }
                     done(err);
-                });
+                });s
             });
         } else if (version === VERSION_18_FLUX || version === VERSION_20) {
             let bucket = node.bucket;
-            if (version === VERSION_18_FLUX) {
-                let retentionPolicy = this.retentionPolicyV18Flux ? this.retentionPolicyV18Flux : 'autogen';
-                bucket = `${this.database}/${retentionPolicy}`;
-            }
             let org = version === VERSION_18_FLUX ? '' : this.org;
-
-            var client = this.influxdbConfig.client.getWriteApi(org, bucket, this.precisionV18FluxV20);
-
+            var client = this.influxdbConfig.client;
+            var precisionV18FluxV20 =  this.precisionV18FluxV20;
             node.on("input", function (msg, send, done) {
 
+                if (version === VERSION_18_FLUX) {
+                    let retentionPolicy = msg.hasOwnProperty('retentionPolicyV18Flux') ? msg.retentionPolicyV18Flux : node.retentionPolicyV18Flux;
+                    retentionPolicy = retentionPolicy || 'autogen';
+                    bucket = `${this.database}/${retentionPolicy}`;
+                }
+
+                var writeApi = client.getWriteApi(org, bucket, precisionV18FluxV20);
                 msg.payload.forEach(element => {
                     let point = new Point(element.measurement);
         
@@ -389,11 +391,11 @@ module.exports = function (RED) {
                     if (element.timestamp) {
                         point.timestamp(element.timestamp);
                     }
-                    client.writePoint(point);
+                    writeApi.writePoint(point);
                 });
 
                 // ensure we write everything including scheduled retries
-                client.flush(true).then(() => {
+                writeApi.flush(true).then(() => {
                         done();
                     }).catch(error => {
                         msg.influx_error = {
